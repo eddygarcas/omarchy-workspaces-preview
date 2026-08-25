@@ -149,10 +149,12 @@ BarWidget {
       model: root.workspaceIds()
 
       WidgetButton {
+        id: wsButton
         required property int modelData
 
         readonly property var workspace: root.workspaceById(modelData)
-        readonly property bool occupied: workspace !== null && workspace.toplevels.values.length > 0
+        readonly property int windowCount: workspace !== null ? workspace.toplevels.values.length : 0
+        readonly property bool occupied: windowCount > 0
         readonly property bool focused: Hyprland.focusedWorkspace !== null && Hyprland.focusedWorkspace.id === modelData
 
         bar: root.bar
@@ -163,6 +165,33 @@ BarWidget {
         fixedWidth: root.vertical ? root.barSize : Style.space(20)
         fixedHeight: root.barSize
         onPressed: function() { root.selectWorkspace(modelData) }
+
+        // Window-count badge: only earns its place once there's a real pick
+        // to make between windows (i.e. exactly when selectWorkspace() would
+        // preview instead of switching directly).
+        BorderSurface {
+          id: countBadge
+          visible: wsButton.windowCount > 1
+          width: Math.max(Style.space(11), badgeText.implicitWidth + Style.space(4))
+          height: Style.space(11)
+          radius: height / 2
+          color: Color.accent
+          borderSpec: Border.flat(Color.popups.background, 1)
+          anchors.top: parent.top
+          anchors.right: parent.right
+          anchors.topMargin: -2
+          anchors.rightMargin: -2
+
+          Text {
+            id: badgeText
+            anchors.centerIn: parent
+            text: String(wsButton.windowCount)
+            color: Color.background
+            font.family: root.bar.fontFamily
+            font.pixelSize: Style.space(7)
+            font.bold: true
+          }
+        }
       }
     }
   }
