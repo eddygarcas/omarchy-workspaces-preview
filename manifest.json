@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "id": "eduard.workspaces",
+  "name": "Workspaces Preview",
+  "version": "1.0.0",
+  "author": "Eduard G. Castelló",
+  "license": "MIT",
+  "homepage": "https://github.com/eddygarcas/omarchy-workspaces-preview",
+  "description": "Workspace switcher with a window preview/selector for busy workspaces",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "Workspaces.qml"
+  },
+  "barWidget": {
+    "displayName": "Workspaces Preview",
+    "description": "Workspace switcher with a window preview/selector",
+    "category": "Compositor",
+    "allowMultiple": false
+  },
+  "omarchy": {
+    "clonedFrom": "omarchy.workspaces"
+  }
+}
