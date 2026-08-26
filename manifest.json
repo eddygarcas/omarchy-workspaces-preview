@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "eduard.workspaces",
   "name": "Workspaces Preview",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "author": "Eduard G. Castelló",
   "license": "MIT",
   "homepage": "https://github.com/eddygarcas/omarchy-workspaces-preview",
