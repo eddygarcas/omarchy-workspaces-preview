@@ -326,6 +326,7 @@ BarWidget {
                 width: parent.width - Style.space(28)
                 anchors.verticalCenter: parent.verticalCenter
                 text: windowRow.win ? (windowRow.win.title || windowRow.appId || "Window") : ""
+                textFormat: Text.PlainText
                 color: index === windowList.currentIndex
                   ? Style.hoverStateColor(root.bar.foreground, Color.accent)
                   : root.bar.foreground
