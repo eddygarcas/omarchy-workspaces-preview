@@ -37,7 +37,17 @@ Installing switches the bar to this widget in place of the built-in
 
 By default `SUPER+<number>` still runs Hyprland's plain
 `hl.dsp.focus` and switches immediately. To make it defer to this widget's
-picker on busy workspaces, add to `~/.config/hypr/bindings.lua`:
+picker on busy workspaces, run:
+
+```
+~/.config/omarchy/plugins/eduard.workspaces/scripts/install-keybinding.sh
+```
+
+This appends a marked, idempotent block to `~/.config/hypr/bindings.lua`
+(backing it up first) and Hyprland picks it up automatically on save. To
+revert it later: `scripts/uninstall-keybinding.sh`.
+
+Prefer to do it by hand instead? Add this to `~/.config/hypr/bindings.lua`:
 
 ```lua
 local workspace_picker = os.getenv("HOME") .. "/.config/omarchy/plugins/eduard.workspaces/scripts/switch-or-preview.sh"
@@ -48,8 +58,10 @@ for workspace = 1, 10 do
 end
 ```
 
-This is a Hyprland keybinding change, not something the plugin installs on
-its own, so it's opt-in and won't touch your existing bindings otherwise.
+Either way, this is a Hyprland keybinding change, not something the plugin
+installer runs on its own — Omarchy's plugin manager deliberately never runs
+plugin code or install hooks on add/update/enable, so it's opt-in and won't
+touch your existing bindings otherwise.
 
 ## What it does
 
@@ -66,10 +78,10 @@ its own, so it's opt-in and won't touch your existing bindings otherwise.
 
 ## Known limitations
 
-The `SUPER+<number>` integration requires manually editing
-`~/.config/hypr/bindings.lua` (see above) — a plugin can't safely rewrite
-another config file's keybindings for you, so this step isn't automated by
-install/enable.
+The `SUPER+<number>` integration requires running `scripts/install-keybinding.sh`
+(or editing `~/.config/hypr/bindings.lua` by hand, see above) — a plugin can't
+safely rewrite another config file's keybindings for you, so this step isn't
+automated by install/enable.
 
 ## Permissions & dependencies
 
@@ -78,16 +90,20 @@ install/enable.
   dispatches `hyprctl dispatch hl.dsp.focus(...)` to switch.
 - `scripts/switch-or-preview.sh` (only used if you wire up the optional
   keybinding) calls `hyprctl workspaces -j`, `jq`, and `omarchy-shell`.
+- `scripts/install-keybinding.sh` / `scripts/uninstall-keybinding.sh` only
+  ever touch `~/.config/hypr/bindings.lua`, and back it up before editing it.
 - Like every Quickshell plugin, this code runs unsandboxed inside the shared
   `omarchy-shell` process — review `Workspaces.qml` before installing.
 
 ## Files
 
-| File                            | Purpose                                             |
-|----------------------------------|------------------------------------------------------|
-| `manifest.json`                  | Plugin manifest (`bar-widget`)                        |
-| `Workspaces.qml`                 | Bar widget, popup UI, and IPC handler                 |
-| `scripts/switch-or-preview.sh`   | Optional `SUPER+<number>` keybinding helper           |
+| File                                 | Purpose                                             |
+|---------------------------------------|------------------------------------------------------|
+| `manifest.json`                       | Plugin manifest (`bar-widget`)                        |
+| `Workspaces.qml`                      | Bar widget, popup UI, and IPC handler                 |
+| `scripts/switch-or-preview.sh`        | Optional `SUPER+<number>` keybinding helper           |
+| `scripts/install-keybinding.sh`       | Wires up the optional keybinding (see above)          |
+| `scripts/uninstall-keybinding.sh`     | Reverts `install-keybinding.sh`                       |
 
 ## Remove
 
