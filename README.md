@@ -90,6 +90,8 @@ workspace from whichever monitor already had it.
 the other monitor. The dotted line marks the pair; `1`+`2` are linked too,
 just not the active pair right now.*
 
+![Switching between linked pairs](demo.gif)
+
 The bar reflects the pairing: a dotted line connects a linked pair, and a
 workspace that's only on-screen because its pair partner was selected
 still shows at full brightness instead of reading as empty/unfocused.
