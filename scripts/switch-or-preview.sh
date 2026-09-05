@@ -21,7 +21,7 @@ id=$1
 max_bytes=262144
 
 focus() {
-  hyprctl dispatch "hl.dsp.focus({ workspace = \"$id\" })" >/dev/null 2>&1
+  "$(dirname "$0")/focus-workspace.sh" "$id"
 }
 
 workspaces_json=$(hyprctl workspaces -j 2>/dev/null | head -c "$((max_bytes + 1))")

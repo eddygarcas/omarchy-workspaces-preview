@@ -32,15 +32,99 @@ BarWidget {
     return ids
   }
 
+  // Workspace linking only applies with exactly two monitors -- see
+  // focus-workspace.sh, which this mirrors so the bar's grouping always
+  // matches what a switch actually does.
+  function isLinkedSetup() {
+    return Hyprland.monitors.values.length === 2
+  }
+
+  function isWorkspaceShown(id) {
+    var mons = Hyprland.monitors.values
+    for (var i = 0; i < mons.length; i++) {
+      if (mons[i].activeWorkspace && mons[i].activeWorkspace.id === id) return true
+    }
+    return false
+  }
+
+  // WCAG relative-luminance contrast (same formula used elsewhere in the
+  // shell, e.g. the agents plugin's icon-variant picker). Badges sit on
+  // Color.accent, which some themes make bright and others make a
+  // saturated-but-dark color, so a hardcoded badge-text color can't stay
+  // legible across themes -- pick whichever of foreground/background
+  // actually contrasts against the real badge background.
+  function luminanceChannel(value) {
+    var c = Number(value)
+    if (!isFinite(c)) return 0
+    return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4)
+  }
+
+  function relativeLuminance(color) {
+    return 0.2126 * root.luminanceChannel(color.r)
+      + 0.7152 * root.luminanceChannel(color.g)
+      + 0.0722 * root.luminanceChannel(color.b)
+  }
+
+  function contrastingTextColor(bg) {
+    var bgLum = root.relativeLuminance(bg)
+    var contrastVsForeground = Math.abs(root.relativeLuminance(Color.foreground) - bgLum)
+    var contrastVsBackground = Math.abs(root.relativeLuminance(Color.background) - bgLum)
+    return contrastVsForeground >= contrastVsBackground ? Color.foreground : Color.background
+  }
+
+  // Pairs up adjacent odd/even workspace ids (1,2 / 3,4 / ...) when linked.
+  // A workspace whose pair partner isn't in workspaceIds() yet (no windows,
+  // never switched to) renders alone rather than groomed in with a
+  // placeholder for a workspace that doesn't exist.
+  function workspaceGroups() {
+    var ids = root.workspaceIds()
+
+    if (!root.isLinkedSetup()) {
+      var solo = []
+      for (var i = 0; i < ids.length; i++) solo.push({ ids: [ids[i]], linked: false })
+      return solo
+    }
+
+    var idSet = {}
+    for (var i = 0; i < ids.length; i++) idSet[ids[i]] = true
+
+    var groups = []
+    var handled = {}
+    for (var i = 0; i < ids.length; i++) {
+      var id = ids[i]
+      if (handled[id]) continue
+
+      var isOdd = id % 2 === 1
+      var partner = isOdd ? id + 1 : id - 1
+      if (idSet[partner]) {
+        var left = isOdd ? id : partner
+        var right = isOdd ? partner : id
+        groups.push({ ids: [left, right], linked: true })
+        handled[left] = true
+        handled[right] = true
+      } else {
+        groups.push({ ids: [id], linked: false })
+        handled[id] = true
+      }
+    }
+    return groups
+  }
+
+  // Same script the SUPER+<number> keybind runs (scripts/switch-or-preview.sh
+  // -> focus-workspace.sh), so bar clicks and keybinds link odd/even
+  // workspace pairs across monitors identically -- see focus-workspace.sh
+  // for the linking rules.
+  readonly property string linkScript: Quickshell.env("HOME") + "/.config/omarchy/plugins/eduard.workspaces/scripts/focus-workspace.sh"
+
   function focusWorkspace(id) {
     if (!root.bar) return
-    root.bar.run("hyprctl dispatch " + Util.shellQuote("hl.dsp.focus({ workspace = \"" + id + "\" })"))
+    root.bar.run(Util.shellQuote(root.linkScript) + " " + Util.shellQuote(String(id)))
   }
 
   function focusWindow(address) {
     if (!root.bar || !address) return
     var addr = "0x" + String(address).replace(/^0x/i, "")
-    root.bar.run("hyprctl dispatch " + Util.shellQuote("hl.dsp.focus({ window = \"address:" + addr + "\" })"))
+    root.bar.run(Util.shellQuote(root.linkScript) + " " + Util.shellQuote(String(root.selectedWorkspaceId)) + " " + Util.shellQuote(addr))
     root.selectedWorkspaceId = -1
   }
 
@@ -141,55 +225,116 @@ BarWidget {
     id: grid
     anchors.fill: parent
     anchors.rightMargin: root.trailingGap
-    columns: root.vertical ? 1 : root.workspaceIds().length
+    columns: root.vertical ? 1 : root.workspaceGroups().length
     columnSpacing: root.vertical ? 0 : Style.space(1)
     rowSpacing: root.vertical ? Style.space(2) : 0
 
     Repeater {
-      model: root.workspaceIds()
+      model: root.workspaceGroups()
 
-      WidgetButton {
-        id: wsButton
-        required property int modelData
+      Item {
+        id: cell
+        required property var modelData
+        readonly property var groupIds: modelData.ids
+        readonly property bool linked: modelData.linked === true
 
-        readonly property var workspace: root.workspaceById(modelData)
-        readonly property int windowCount: workspace !== null ? workspace.toplevels.values.length : 0
-        readonly property bool occupied: windowCount > 0
-        readonly property bool focused: Hyprland.focusedWorkspace !== null && Hyprland.focusedWorkspace.id === modelData
+        implicitWidth: flow.implicitWidth
+        implicitHeight: flow.implicitHeight
 
-        bar: root.bar
-        text: focused ? "󱓻" : (modelData === 10 ? "0" : String(modelData))
-        opacity: occupied || focused ? 1 : 0.5
-        horizontalMargin: 6
-        verticalPadding: 6
-        fixedWidth: root.vertical ? root.barSize : Style.space(20)
-        fixedHeight: root.barSize
-        onPressed: function() { root.selectWorkspace(modelData) }
+        Flow {
+          id: flow
+          anchors.centerIn: parent
+          flow: root.vertical ? Flow.TopToBottom : Flow.LeftToRight
+          // Linked pairs get extra room so the dotted connector (drawn as
+          // an overlay off the first button, below) has space to sit
+          // between the two buttons instead of overlapping either one.
+          spacing: cell.linked ? Style.space(11) : Style.space(2)
 
-        // Window-count badge: only earns its place once there's a real pick
-        // to make between windows (i.e. exactly when selectWorkspace() would
-        // preview instead of switching directly).
-        BorderSurface {
-          id: countBadge
-          visible: wsButton.windowCount > 1
-          width: Math.max(Style.space(11), badgeText.implicitWidth + Style.space(4))
-          height: Style.space(11)
-          radius: height / 2
-          color: Color.accent
-          borderSpec: Border.flat(Color.popups.background, 1)
-          anchors.top: parent.top
-          anchors.right: parent.right
-          anchors.topMargin: -2
-          anchors.rightMargin: -2
+          Repeater {
+            model: cell.groupIds
 
-          Text {
-            id: badgeText
-            anchors.centerIn: parent
-            text: String(wsButton.windowCount)
-            color: Color.background
-            font.family: root.bar.fontFamily
-            font.pixelSize: Style.space(7)
-            font.bold: true
+            WidgetButton {
+              id: wsButton
+              required property int modelData
+              required property int index
+
+              readonly property var workspace: root.workspaceById(modelData)
+              readonly property int windowCount: workspace !== null ? workspace.toplevels.values.length : 0
+              readonly property bool occupied: windowCount > 0
+              readonly property bool focused: Hyprland.focusedWorkspace !== null && Hyprland.focusedWorkspace.id === modelData
+              // True while linked and shown on some monitor even if input
+              // focus is on its pair partner -- it's still on-screen, so it
+              // shouldn't read as dim/unoccupied.
+              readonly property bool shown: cell.linked && root.isWorkspaceShown(modelData)
+
+              bar: root.bar
+              text: focused ? "󱓻" : (modelData === 10 ? "0" : String(modelData))
+              opacity: occupied || focused || shown ? 1 : 0.5
+              horizontalMargin: 6
+              verticalPadding: 6
+              fixedWidth: root.vertical ? root.barSize : Style.space(20)
+              fixedHeight: root.barSize
+              onPressed: function() { root.selectWorkspace(modelData) }
+
+              // Dotted link line to the paired workspace -- drawn as an
+              // overlay reaching from the pair's first (odd) button into
+              // the gap toward its second (even) button, rather than a
+              // pill wrapping both, so switching to either one reads as
+              // "these two are connected" instead of "these two are boxed
+              // together". Overflows this button's own bounds on purpose
+              // (WidgetButton doesn't clip), landing in the flow.spacing
+              // gap reserved for it above.
+              Flow {
+                id: linkDots
+                visible: cell.linked && wsButton.index === 0
+                flow: root.vertical ? Flow.TopToBottom : Flow.LeftToRight
+                spacing: Style.space(1)
+                anchors.left: root.vertical ? undefined : parent.right
+                anchors.leftMargin: root.vertical ? 0 : Style.space(2)
+                anchors.verticalCenter: root.vertical ? undefined : parent.verticalCenter
+                anchors.top: root.vertical ? parent.bottom : undefined
+                anchors.topMargin: root.vertical ? Style.space(2) : 0
+                anchors.horizontalCenter: root.vertical ? parent.horizontalCenter : undefined
+
+                Repeater {
+                  model: 3
+                  Rectangle {
+                    width: Style.space(2)
+                    height: width
+                    radius: width / 2
+                    color: Color.accent
+                  }
+                }
+              }
+
+              // Window-count badge: only earns its place once there's a real
+              // pick to make between windows (i.e. exactly when
+              // selectWorkspace() would preview instead of switching
+              // directly).
+              BorderSurface {
+                id: countBadge
+                visible: wsButton.windowCount > 1
+                width: Math.max(Style.space(14), badgeText.implicitWidth + Style.space(5))
+                height: Style.space(14)
+                radius: height / 2
+                color: Color.accent
+                borderSpec: Border.flat(Color.popups.background, 1)
+                anchors.top: parent.top
+                anchors.right: parent.right
+                anchors.topMargin: -2
+                anchors.rightMargin: -2
+
+                Text {
+                  id: badgeText
+                  anchors.centerIn: parent
+                  text: String(wsButton.windowCount)
+                  color: root.contrastingTextColor(countBadge.color)
+                  font.family: root.bar.fontFamily
+                  font.pixelSize: Style.space(9)
+                  font.bold: true
+                }
+              }
+            }
           }
         }
       }
