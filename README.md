@@ -76,6 +76,28 @@ touch your existing bindings otherwise.
   focused.
 - Workspace `10` displays as `0`, matching the built-in widget.
 
+## Multi-monitor workspace linking
+
+On a setup with exactly two monitors, workspaces pair up automatically:
+`1`+`2`, `3`+`4`, `5`+`6`, and so on. Switching to either member of a pair
+shows both at once — the odd id lands on your leftmost monitor (by
+position), the even id on the other — instead of the switch stealing the
+workspace from whichever monitor already had it.
+
+![Workspace 3 selected, linked with workspace 4](preview.png)
+
+*Workspace `3` just got selected — its pair partner, `4`, comes along on
+the other monitor. The dotted line marks the pair; `1`+`2` are linked too,
+just not the active pair right now.*
+
+The bar reflects the pairing: a dotted line connects a linked pair, and a
+workspace that's only on-screen because its pair partner was selected
+still shows at full brightness instead of reading as empty/unfocused.
+
+This applies to both `SUPER+<number>` and clicking a workspace in the bar.
+Setups with one monitor, or three or more, are unaffected — each workspace
+switches on its own, same as the built-in widget.
+
 ## Known limitations
 
 The `SUPER+<number>` integration requires running `scripts/install-keybinding.sh`
@@ -87,9 +109,14 @@ automated by install/enable.
 
 - No external packages or network access required.
 - Reads workspace/window state via Quickshell's `Hyprland` integration and
-  dispatches `hyprctl dispatch hl.dsp.focus(...)` to switch.
+  switches via `scripts/focus-workspace.sh`.
+- `scripts/focus-workspace.sh` calls `hyprctl monitors -j`, `jq`, and
+  `hyprctl dispatch hl.dsp.focus(...)` to switch — and, only on an
+  exactly-two-monitor setup, a few extra `hl.dsp.focus({monitor=...})`
+  dispatches to link a workspace pair across both monitors (see above).
 - `scripts/switch-or-preview.sh` (only used if you wire up the optional
-  keybinding) calls `hyprctl workspaces -j`, `jq`, and `omarchy-shell`.
+  keybinding) calls `hyprctl workspaces -j`, `jq`, `omarchy-shell`, and
+  `scripts/focus-workspace.sh` for the actual switch.
 - `scripts/install-keybinding.sh` / `scripts/uninstall-keybinding.sh` only
   ever touch `~/.config/hypr/bindings.lua`, and back it up before editing it.
 - Like every Quickshell plugin, this code runs unsandboxed inside the shared
@@ -101,6 +128,7 @@ automated by install/enable.
 |---------------------------------------|------------------------------------------------------|
 | `manifest.json`                       | Plugin manifest (`bar-widget`)                        |
 | `Workspaces.qml`                      | Bar widget, popup UI, and IPC handler                 |
+| `scripts/focus-workspace.sh`          | Switches workspaces; links odd/even pairs on 2 monitors |
 | `scripts/switch-or-preview.sh`        | Optional `SUPER+<number>` keybinding helper           |
 | `scripts/install-keybinding.sh`       | Wires up the optional keybinding (see above)          |
 | `scripts/uninstall-keybinding.sh`     | Reverts `install-keybinding.sh`                       |
