@@ -47,6 +47,19 @@ BarWidget {
     return false
   }
 
+  // The window that would regain focus if you switched back to `ws` --
+  // Hyprland's own `activated` flag, same signal the popup already bolds a
+  // window by. Used to show that window's icon in the badge in place of
+  // the count while its workspace holds keyboard focus.
+  function activeWindowFor(ws) {
+    if (!ws) return null
+    var wins = ws.toplevels.values
+    for (var i = 0; i < wins.length; i++) {
+      if (wins[i].activated) return wins[i]
+    }
+    return null
+  }
+
   // WCAG relative-luminance contrast (same formula used elsewhere in the
   // shell, e.g. the agents plugin's icon-variant picker). Badges sit on
   // Color.accent, which some themes make bright and others make a
@@ -307,10 +320,26 @@ BarWidget {
                 }
               }
 
-              // Window-count badge: only earns its place once there's a real
-              // pick to make between windows (i.e. exactly when
-              // selectWorkspace() would preview instead of switching
-              // directly).
+              // Badge: only earns its place once there's a real pick to
+              // make between windows (i.e. exactly when selectWorkspace()
+              // would preview instead of switching directly). Shows the
+              // window count normally; while this workspace holds
+              // keyboard focus, shows the focused window's icon instead,
+              // circularly cropped to match the badge's own round shape
+              // (its first letter if no icon resolves, or if the icon
+              // never actually finishes loading), then reverts to the
+              // count once focus moves elsewhere. The crop is done with
+              // Canvas's own 2D clip+drawImage rather than
+              // layer.effect/MultiEffect -- the shader-based mask never
+              // actually rendered rounded on the real bar (tried twice),
+              // so this avoids the GPU shader pipeline entirely: Canvas
+              // paints through QPainter, the same path plain
+              // Rectangle/Image already render through. Decoding is left
+              // to a real (hidden) Image rather than Canvas's own
+              // loadImage(), which didn't reliably load every icon
+              // (Ghostty and others came back blank) -- Image already
+              // loads every icon correctly elsewhere in this file, so
+              // Canvas's job here is purely the crop, not the fetch.
               BorderSurface {
                 id: countBadge
                 visible: wsButton.windowCount > 1
@@ -324,10 +353,48 @@ BarWidget {
                 anchors.topMargin: -2
                 anchors.rightMargin: -2
 
+                readonly property var activeWindow: wsButton.focused ? root.activeWindowFor(wsButton.workspace) : null
+                readonly property string activeAppId: activeWindow && activeWindow.wayland ? activeWindow.wayland.appId : ""
+                readonly property string activeIconSource: activeAppId ? Quickshell.iconPath(activeAppId, true) : ""
+                readonly property bool showIcon: activeWindow !== null && activeIconSource !== "" && iconLoader.status === Image.Ready
+                readonly property string activeLetter: {
+                  var label = activeWindow ? (activeWindow.title || activeAppId) : ""
+                  return label ? label.charAt(0).toUpperCase() : "?"
+                }
+
+                Image {
+                  id: iconLoader
+                  visible: false
+                  source: countBadge.activeIconSource
+                  asynchronous: true
+                  smooth: true
+                  onStatusChanged: if (status === Image.Ready) badgeIcon.requestPaint()
+                }
+
+                Canvas {
+                  id: badgeIcon
+                  visible: countBadge.showIcon
+                  anchors.fill: parent
+
+                  onPaint: {
+                    var ctx = getContext("2d")
+                    ctx.reset()
+                    if (iconLoader.status !== Image.Ready) return
+                    ctx.save()
+                    ctx.beginPath()
+                    ctx.arc(width / 2, height / 2, width / 2, 0, Math.PI * 2)
+                    ctx.closePath()
+                    ctx.clip()
+                    ctx.drawImage(iconLoader, 0, 0, width, height)
+                    ctx.restore()
+                  }
+                }
+
                 Text {
                   id: badgeText
+                  visible: !countBadge.showIcon
                   anchors.centerIn: parent
-                  text: String(wsButton.windowCount)
+                  text: countBadge.activeWindow ? countBadge.activeLetter : String(wsButton.windowCount)
                   color: root.contrastingTextColor(countBadge.color)
                   font.family: root.bar.fontFamily
                   font.pixelSize: Style.space(9)
