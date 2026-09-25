@@ -19,6 +19,13 @@ BarWidget {
   // Keep 1-5 pinned on the bar whether or not they hold windows (the old
   // behaviour). Off by default: only occupied and on-screen workspaces show.
   readonly property bool showEmpty: root.setting("showEmpty", false)
+  // A pill for Hyprland's special workspace while something is stashed in
+  // it (SUPER+ALT+S parks a window there, SUPER+S brings it back). It shows
+  // on every bar, since the stash is one global thing rather than something
+  // a monitor owns; it lights up on the monitor currently displaying it.
+  readonly property bool showScratchpad: root.setting("showScratchpad", true)
+  readonly property string scratchpadName: root.setting("scratchpadName", "special:scratchpad")
+  readonly property string scratchpadLabel: root.setting("scratchpadLabel", "S")
 
   // --- keeping Hyprland's view fresh ---------------------------------------
   // Quickshell does not refetch toplevels or workspaces on its own, so window
@@ -30,6 +37,9 @@ BarWidget {
 
   readonly property var windowEvents: ["openwindow", "closewindow", "movewindow", "movewindowv2", "windowtitle", "windowtitlev2", "activewindow", "activewindowv2", "urgent"]
   readonly property var workspaceEvents: ["workspace", "workspacev2", "createworkspace", "createworkspacev2", "destroyworkspace", "destroyworkspacev2", "moveworkspace", "moveworkspacev2", "focusedmon", "configreloaded"]
+  // Toggling the scratchpad open or shut changes which monitor is showing
+  // it, which only the monitors payload carries.
+  readonly property var specialEvents: ["activespecial", "activespecialv2"]
 
   Connections {
     target: Hyprland
@@ -41,8 +51,51 @@ BarWidget {
       } else if (root.workspaceEvents.indexOf(name) !== -1) {
         Hyprland.refreshWorkspaces()
         root.revision++
+      } else if (root.specialEvents.indexOf(name) !== -1) {
+        Hyprland.refreshWorkspaces()
+        Hyprland.refreshMonitors()
+        root.revision++
       }
     }
+  }
+
+  // --- scratchpad -----------------------------------------------------------
+  // One bar surface exists per monitor, so the widget reads its own screen
+  // off the window it was instantiated into to tell whether the stash is
+  // open *here*.
+  readonly property var barWindow: root.QsWindow ? root.QsWindow.window : null
+  readonly property string screenName: barWindow && barWindow.screen ? String(barWindow.screen.name || "") : ""
+
+  // Hyprland keeps the special workspace in the list for as long as it
+  // holds windows, whether or not it is currently toggled open.
+  readonly property var scratchpadWorkspace: {
+    var _ = root.revision
+    if (!root.showScratchpad) return null
+    var values = Hyprland.workspaces.values
+    for (var i = 0; i < values.length; i++) {
+      if (String(values[i].name || "") === root.scratchpadName) return values[i]
+    }
+    return null
+  }
+
+  readonly property bool scratchpadVisible: root.showScratchpad && root.hasWindows(root.scratchpadWorkspace)
+
+  readonly property bool scratchpadOpen: {
+    var _ = root.revision
+    var mons = Hyprland.monitors.values
+    for (var i = 0; i < mons.length; i++) {
+      if (String(mons[i].name) !== root.screenName) continue
+      var ipc = mons[i].lastIpcObject
+      var special = ipc ? ipc.specialWorkspace : null
+      return !!special && String(special.name || "") === root.scratchpadName
+    }
+    return false
+  }
+
+  function toggleScratchpad() {
+    if (!root.bar) return
+    var name = root.scratchpadName.indexOf("special:") === 0 ? root.scratchpadName.slice(8) : root.scratchpadName
+    root.bar.run("hyprctl dispatch " + Util.shellQuote('hl.dsp.workspace.toggle_special("' + name + '")'))
   }
 
   function workspaceById(id) {
@@ -286,7 +339,7 @@ BarWidget {
     id: grid
     anchors.fill: parent
     anchors.rightMargin: root.trailingGap
-    columns: root.vertical ? 1 : root.workspaceGroups().length
+    columns: root.vertical ? 1 : root.workspaceGroups().length + (root.scratchpadVisible ? 1 : 0)
     columnSpacing: root.vertical ? 0 : Style.space(1)
     rowSpacing: root.vertical ? Style.space(2) : 0
 
@@ -376,6 +429,24 @@ BarWidget {
           }
         }
       }
+    }
+
+    // The scratchpad sits after the numbers, as the place windows go when
+    // they are not on any of them. Click toggles the stash on this monitor.
+    WidgetButton {
+      id: scratchpadButton
+      visible: root.scratchpadVisible
+      readonly property string icons: root.vertical ? "" : root.iconsFor(root.scratchpadWorkspace)
+
+      bar: root.bar
+      text: icons !== "" ? (root.scratchpadLabel !== "" ? root.scratchpadLabel + " " + icons : icons) : root.scratchpadLabel
+      opacity: root.scratchpadOpen ? 1 : 0.5
+      horizontalMargin: 6
+      verticalPadding: 6
+      fixedWidth: root.vertical ? root.barSize : -1
+      fixedHeight: root.barSize
+      tooltipText: "Scratchpad"
+      onPressed: function() { root.toggleScratchpad() }
     }
   }
 

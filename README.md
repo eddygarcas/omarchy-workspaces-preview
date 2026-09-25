@@ -95,6 +95,9 @@ omarchy bar set eduard.workspaces <key> <value> --json
 | `showIcons` | `true` | Draw a glyph per open window beside the number. |
 | `maxIcons` | `0` | Cap glyphs per workspace, collapsing the rest to `+N`. `0` means no cap. |
 | `showEmpty` | `false` | Keep workspaces 1-5 pinned on the bar whether or not they hold windows. |
+| `showScratchpad` | `true` | Show a pill for the scratchpad while it holds windows. |
+| `scratchpadName` | `special:scratchpad` | Which special workspace that pill tracks. |
+| `scratchpadLabel` | `S` | Text on the scratchpad pill. Set `""` for icons only. |
 
 Icons are resolved in `IconRules.js`, an ordered list of `{ pattern, icon }`
 where the pattern is a case-insensitive regex tested against the window title
@@ -104,6 +107,15 @@ above generic class rules. To find a window's class:
 ```
 hyprctl clients -j | jq -r '.[] | "\(.class)\t\(.title)"'
 ```
+
+### The scratchpad
+
+`SUPER + ALT + S` stashes a window in `special:scratchpad` and `SUPER + S`
+brings it back. While the stash holds windows, a pill labelled `S` sits after
+the workspace numbers with a glyph per stashed window. It is dimmed until the
+stash is open on that bar's monitor, and clicking it toggles the stash there.
+It shows on every bar, because the scratchpad is one global stash rather than
+something a monitor owns.
 
 ## Multi-monitor workspace linking
 
@@ -177,7 +189,8 @@ keybinding, revert that block in `~/.config/hypr/bindings.lua` by hand.
 
 ## Credits
 
-The per-window icons, the hidden-empty-workspace behaviour and `IconRules.js`
+The per-window icons, the hidden-empty-workspace behaviour, the scratchpad pill
+and `IconRules.js`
 are taken from [decent-workspaces](https://github.com/TheTrueFerret/omarchy-decent-workspaces)
 by TheTrueFerret (MIT), whose icon map is in turn adapted from `saif.workspaces`
 by Saif Omar (MIT).

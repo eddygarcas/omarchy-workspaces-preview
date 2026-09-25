@@ -2,11 +2,11 @@
   "schemaVersion": 1,
   "id": "eduard.workspaces",
   "name": "Workspaces Preview",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "author": "Eduard G. Castell\u00f3",
   "license": "MIT",
   "homepage": "https://github.com/eddygarcas/omarchy-workspaces-preview",
-  "description": "Workspace switcher with app icons per window, hidden empty workspaces, and a window preview/selector for busy workspaces",
+  "description": "Workspace switcher with app icons per window, hidden empty workspaces, a scratchpad pill, and a window preview/selector for busy workspaces",
   "kinds": [
     "bar-widget"
   ],
