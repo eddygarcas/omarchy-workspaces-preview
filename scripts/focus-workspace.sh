@@ -25,10 +25,12 @@ case "$id" in
   ''|*[!0-9]*) exit 1 ;;
 esac
 
-case "$window_addr" in
-  ''|0x[0-9a-fA-F]*) ;;
-  *) window_addr="" ;;
-esac
+# Exact match only: a shell glob like 0x[0-9a-fA-F]* would accept anything
+# after one hex digit, and the address is interpolated into a quoted Lua
+# expression below.
+if [ -n "$window_addr" ] && ! [[ "$window_addr" =~ ^0x[0-9a-fA-F]+$ ]]; then
+  window_addr=""
+fi
 
 focus_window_or_workspace() {
   if [ -n "$window_addr" ]; then

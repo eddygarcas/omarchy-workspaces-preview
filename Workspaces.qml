@@ -24,7 +24,16 @@ BarWidget {
   // on every bar, since the stash is one global thing rather than something
   // a monitor owns; it lights up on the monitor currently displaying it.
   readonly property bool showScratchpad: root.setting("showScratchpad", true)
-  readonly property string scratchpadName: root.setting("scratchpadName", "special:scratchpad")
+  // The name ends up inside a quoted Lua expression handed to `hyprctl
+  // dispatch`, so it's validated against a narrow allowlist up front rather
+  // than escaped at the call site: an optional `special:` prefix and then
+  // only [A-Za-z0-9_-]. Anything else falls back to the default, and the
+  // dispatch below only ever sees the validated value.
+  readonly property string scratchpadName: {
+    var raw = String(root.setting("scratchpadName", "special:scratchpad"))
+    return /^(special:)?[A-Za-z0-9_-]+$/.test(raw) ? raw : "special:scratchpad"
+  }
+  readonly property string scratchpadDispatchName: root.scratchpadName.indexOf("special:") === 0 ? root.scratchpadName.slice(8) : root.scratchpadName
   readonly property string scratchpadLabel: root.setting("scratchpadLabel", "S")
 
   // --- keeping Hyprland's view fresh ---------------------------------------
@@ -94,7 +103,10 @@ BarWidget {
 
   function toggleScratchpad() {
     if (!root.bar) return
-    var name = root.scratchpadName.indexOf("special:") === 0 ? root.scratchpadName.slice(8) : root.scratchpadName
+    var name = root.scratchpadDispatchName
+    // Re-checked here so the Lua string below can never carry anything but
+    // the allowlisted characters, whatever the property above evaluates to.
+    if (!/^[A-Za-z0-9_-]+$/.test(name)) return
     root.bar.run("hyprctl dispatch " + Util.shellQuote('hl.dsp.workspace.toggle_special("' + name + '")'))
   }
 

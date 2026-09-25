@@ -96,7 +96,7 @@ omarchy bar set eduard.workspaces <key> <value> --json
 | `maxIcons` | `0` | Cap glyphs per workspace, collapsing the rest to `+N`. `0` means no cap. |
 | `showEmpty` | `false` | Keep workspaces 1-5 pinned on the bar whether or not they hold windows. |
 | `showScratchpad` | `true` | Show a pill for the scratchpad while it holds windows. |
-| `scratchpadName` | `special:scratchpad` | Which special workspace that pill tracks. |
+| `scratchpadName` | `special:scratchpad` | Which special workspace that pill tracks. Only an optional `special:` prefix plus `[A-Za-z0-9_-]` is accepted; anything else falls back to the default. |
 | `scratchpadLabel` | `S` | Text on the scratchpad pill. Set `""` for icons only. |
 
 Icons are resolved in `IconRules.js`, an ordered list of `{ pattern, icon }`
@@ -161,7 +161,13 @@ automated by install/enable.
   keybinding) calls `hyprctl workspaces -j`, `jq`, `omarchy-shell`, and
   `scripts/focus-workspace.sh` for the actual switch.
 - `scripts/install-keybinding.sh` / `scripts/uninstall-keybinding.sh` only
-  ever touch `~/.config/hypr/bindings.lua`, and back it up before editing it.
+  ever touch `~/.config/hypr/bindings.lua`. They resolve it to its real
+  file (which must be a regular file), back that up, write the new
+  content to a `mktemp`'d sibling and rename it into place -- never
+  writing through a pathname that could be swapped for a symlink.
+- The scratchpad pill's `scratchpadName` setting is validated against a
+  narrow allowlist before it is placed in the `hyprctl dispatch` Lua
+  expression; values outside it fall back to `special:scratchpad`.
 - Like every Quickshell plugin, this code runs unsandboxed inside the shared
   `omarchy-shell` process — review `Workspaces.qml` before installing.
 
