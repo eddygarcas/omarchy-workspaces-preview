@@ -76,6 +76,35 @@ touch your existing bindings otherwise.
   focused.
 - Workspace `10` displays as `0`, matching the built-in widget.
 
+## App icons and hidden empty workspaces
+
+Each workspace pill shows a Nerd Font glyph per open window beside its
+number, and workspaces without windows are hidden unless they are on screen
+(so a linked pair's empty partner still renders while it is shown). The
+approach and the icon map come from
+[decent-workspaces](https://github.com/TheTrueFerret/omarchy-decent-workspaces).
+
+Settings go on the widget's entry in `~/.config/omarchy/shell.json`, or:
+
+```
+omarchy bar set eduard.workspaces <key> <value> --json
+```
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `showIcons` | `true` | Draw a glyph per open window beside the number. |
+| `maxIcons` | `0` | Cap glyphs per workspace, collapsing the rest to `+N`. `0` means no cap. |
+| `showEmpty` | `false` | Keep workspaces 1-5 pinned on the bar whether or not they hold windows. |
+
+Icons are resolved in `IconRules.js`, an ordered list of `{ pattern, icon }`
+where the pattern is a case-insensitive regex tested against the window title
+first and the class second; the first match wins, so title-specific rules sit
+above generic class rules. To find a window's class:
+
+```
+hyprctl clients -j | jq -r '.[] | "\(.class)\t\(.title)"'
+```
+
 ## Multi-monitor workspace linking
 
 On a setup with exactly two monitors, workspaces pair up automatically:
@@ -130,6 +159,7 @@ automated by install/enable.
 |---------------------------------------|------------------------------------------------------|
 | `manifest.json`                       | Plugin manifest (`bar-widget`)                        |
 | `Workspaces.qml`                      | Bar widget, popup UI, and IPC handler                 |
+| `IconRules.js`                        | Window class/title to Nerd Font glyph rules           |
 | `scripts/focus-workspace.sh`          | Switches workspaces; links odd/even pairs on 2 monitors |
 | `scripts/switch-or-preview.sh`        | Optional `SUPER+<number>` keybinding helper           |
 | `scripts/install-keybinding.sh`       | Wires up the optional keybinding (see above)          |
@@ -144,6 +174,13 @@ omarchy plugin remove eduard.workspaces
 This deletes `~/.config/omarchy/plugins/eduard.workspaces/` and restores the
 built-in `omarchy.workspaces` widget on the bar. If you wired up the optional
 keybinding, revert that block in `~/.config/hypr/bindings.lua` by hand.
+
+## Credits
+
+The per-window icons, the hidden-empty-workspace behaviour and `IconRules.js`
+are taken from [decent-workspaces](https://github.com/TheTrueFerret/omarchy-decent-workspaces)
+by TheTrueFerret (MIT), whose icon map is in turn adapted from `saif.workspaces`
+by Saif Omar (MIT).
 
 ## License
 

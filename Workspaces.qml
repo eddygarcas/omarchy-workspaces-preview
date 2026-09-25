@@ -5,10 +5,45 @@ import Quickshell.Io
 import Quickshell.Hyprland
 import qs.Commons
 import qs.Ui
+import "IconRules.js" as IconRules
 
 BarWidget {
   id: root
   moduleName: "omarchy.workspaces"
+
+  // --- settings, read from this widget's shell.json layout entry ------------
+  // Draw a Nerd Font glyph per open window beside the workspace number.
+  readonly property bool showIcons: root.setting("showIcons", true)
+  // 0 = an icon for every window; otherwise the overflow collapses to "+N".
+  readonly property int maxIcons: root.setting("maxIcons", 0)
+  // Keep 1-5 pinned on the bar whether or not they hold windows (the old
+  // behaviour). Off by default: only occupied and on-screen workspaces show.
+  readonly property bool showEmpty: root.setting("showEmpty", false)
+
+  // --- keeping Hyprland's view fresh ---------------------------------------
+  // Quickshell does not refetch toplevels or workspaces on its own, so window
+  // and workspace events have to poke it or occupancy (and the icons, which
+  // also key off window titles) go stale. `revision` is bumped alongside so
+  // the bindings below re-evaluate even on events that change nothing
+  // Quickshell exposes as a property.
+  property int revision: 0
+
+  readonly property var windowEvents: ["openwindow", "closewindow", "movewindow", "movewindowv2", "windowtitle", "windowtitlev2", "activewindow", "activewindowv2", "urgent"]
+  readonly property var workspaceEvents: ["workspace", "workspacev2", "createworkspace", "createworkspacev2", "destroyworkspace", "destroyworkspacev2", "moveworkspace", "moveworkspacev2", "focusedmon", "configreloaded"]
+
+  Connections {
+    target: Hyprland
+    function onRawEvent(event) {
+      var name = event.name
+      if (root.windowEvents.indexOf(name) !== -1) {
+        Hyprland.refreshToplevels()
+        root.revision++
+      } else if (root.workspaceEvents.indexOf(name) !== -1) {
+        Hyprland.refreshWorkspaces()
+        root.revision++
+      }
+    }
+  }
 
   function workspaceById(id) {
     var values = Hyprland.workspaces.values
@@ -19,17 +54,31 @@ BarWidget {
     return null
   }
 
+  // Which workspaces get a pill. By default only the ones that hold windows,
+  // plus whatever is currently on screen on any monitor (so stepping onto a
+  // fresh workspace never leaves the bar with nothing to point at, and a
+  // linked pair's empty partner still renders while it's shown). With
+  // `showEmpty` on, 1-5 stay pinned as well.
   function workspaceIds() {
-    var ids = [1, 2, 3, 4, 5]
+    var _ = root.revision
+    var ids = root.showEmpty ? [1, 2, 3, 4, 5] : []
     var values = Hyprland.workspaces.values
 
     for (var i = 0; i < values.length; i++) {
-      var id = values[i].id
-      if (id > 0 && id <= 10 && ids.indexOf(id) === -1) ids.push(id)
+      var ws = values[i]
+      var id = ws.id
+      if (id <= 0 || id > 10 || ids.indexOf(id) !== -1) continue
+      if (root.showEmpty || root.hasWindows(ws) || root.isWorkspaceShown(id)) ids.push(id)
     }
 
     ids.sort(function(left, right) { return left - right })
     return ids
+  }
+
+  function hasWindows(ws) {
+    if (!ws) return false
+    var tops = ws.toplevels ? ws.toplevels.values : null
+    return !!tops && tops.length > 0
   }
 
   // Workspace linking only applies with exactly two monitors -- see
@@ -47,42 +96,41 @@ BarWidget {
     return false
   }
 
-  // The window that would regain focus if you switched back to `ws` --
-  // Hyprland's own `activated` flag, same signal the popup already bolds a
-  // window by. Used to show that window's icon in the badge in place of
-  // the count while its workspace holds keyboard focus.
-  function activeWindowFor(ws) {
-    if (!ws) return null
-    var wins = ws.toplevels.values
-    for (var i = 0; i < wins.length; i++) {
-      if (wins[i].activated) return wins[i]
-    }
-    return null
+  // --- icons ---------------------------------------------------------------
+  // One Nerd Font glyph per window, resolved from the window's class and
+  // title via IconRules.js (title first, so a GitHub tab beats the browser).
+  function windowClass(toplevel) {
+    var ipc = toplevel ? toplevel.lastIpcObject : null
+    if (ipc && ipc.class) return ipc.class
+    if (toplevel && toplevel.wayland && toplevel.wayland.appId) return toplevel.wayland.appId
+    return ""
   }
 
-  // WCAG relative-luminance contrast (same formula used elsewhere in the
-  // shell, e.g. the agents plugin's icon-variant picker). Badges sit on
-  // Color.accent, which some themes make bright and others make a
-  // saturated-but-dark color, so a hardcoded badge-text color can't stay
-  // legible across themes -- pick whichever of foreground/background
-  // actually contrasts against the real badge background.
-  function luminanceChannel(value) {
-    var c = Number(value)
-    if (!isFinite(c)) return 0
-    return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4)
+  function windowTitle(toplevel) {
+    if (toplevel && toplevel.title) return toplevel.title
+    var ipc = toplevel ? toplevel.lastIpcObject : null
+    if (ipc && ipc.title) return ipc.title
+    return ""
   }
 
-  function relativeLuminance(color) {
-    return 0.2126 * root.luminanceChannel(color.r)
-      + 0.7152 * root.luminanceChannel(color.g)
-      + 0.0722 * root.luminanceChannel(color.b)
+  function iconFor(toplevel) {
+    var cls = root.windowClass(toplevel).toLowerCase()
+    var title = root.windowTitle(toplevel).toLowerCase()
+    if (!cls && !title) return IconRules.fallback
+    return IconRules.resolve(cls, title)
   }
 
-  function contrastingTextColor(bg) {
-    var bgLum = root.relativeLuminance(bg)
-    var contrastVsForeground = Math.abs(root.relativeLuminance(Color.foreground) - bgLum)
-    var contrastVsBackground = Math.abs(root.relativeLuminance(Color.background) - bgLum)
-    return contrastVsForeground >= contrastVsBackground ? Color.foreground : Color.background
+  function iconsFor(ws) {
+    var _ = root.revision
+    if (!root.showIcons || !ws) return ""
+    var tops = ws.toplevels ? ws.toplevels.values : null
+    if (!tops || tops.length === 0) return ""
+
+    var shown = root.maxIcons > 0 ? Math.min(tops.length, root.maxIcons) : tops.length
+    var icons = []
+    for (var i = 0; i < shown; i++) icons.push(root.iconFor(tops[i]))
+    if (tops.length > shown) icons.push("+" + (tops.length - shown))
+    return icons.join(" ")
   }
 
   // Pairs up adjacent odd/even workspace ids (1,2 / 3,4 / ...) when linked.
@@ -280,12 +328,17 @@ BarWidget {
               // shouldn't read as dim/unoccupied.
               readonly property bool shown: cell.linked && root.isWorkspaceShown(modelData)
 
+              readonly property string label: focused ? "󱓻" : (modelData === 10 ? "0" : String(modelData))
+              // Icons only fit beside the number on a horizontal bar; a
+              // vertical bar keeps the bare number in its fixed-width slot.
+              readonly property string icons: root.vertical ? "" : root.iconsFor(workspace)
+
               bar: root.bar
-              text: focused ? "󱓻" : (modelData === 10 ? "0" : String(modelData))
+              text: icons !== "" ? label + " " + icons : label
               opacity: occupied || focused || shown ? 1 : 0.5
               horizontalMargin: 6
               verticalPadding: 6
-              fixedWidth: root.vertical ? root.barSize : Style.space(20)
+              fixedWidth: root.vertical ? root.barSize : (icons !== "" ? -1 : Style.space(20))
               fixedHeight: root.barSize
               onPressed: function() { root.selectWorkspace(modelData) }
 
@@ -317,88 +370,6 @@ BarWidget {
                     radius: width / 2
                     color: Color.accent
                   }
-                }
-              }
-
-              // Badge: only earns its place once there's a real pick to
-              // make between windows (i.e. exactly when selectWorkspace()
-              // would preview instead of switching directly). Shows the
-              // window count normally; while this workspace holds
-              // keyboard focus, shows the focused window's icon instead,
-              // circularly cropped to match the badge's own round shape
-              // (its first letter if no icon resolves, or if the icon
-              // never actually finishes loading), then reverts to the
-              // count once focus moves elsewhere. The crop is done with
-              // Canvas's own 2D clip+drawImage rather than
-              // layer.effect/MultiEffect -- the shader-based mask never
-              // actually rendered rounded on the real bar (tried twice),
-              // so this avoids the GPU shader pipeline entirely: Canvas
-              // paints through QPainter, the same path plain
-              // Rectangle/Image already render through. Decoding is left
-              // to a real (hidden) Image rather than Canvas's own
-              // loadImage(), which didn't reliably load every icon
-              // (Ghostty and others came back blank) -- Image already
-              // loads every icon correctly elsewhere in this file, so
-              // Canvas's job here is purely the crop, not the fetch.
-              BorderSurface {
-                id: countBadge
-                visible: wsButton.windowCount > 1
-                width: Math.max(Style.space(14), badgeText.implicitWidth + Style.space(5))
-                height: Style.space(14)
-                radius: height / 2
-                color: Color.accent
-                borderSpec: Border.flat(Color.popups.background, 1)
-                anchors.top: parent.top
-                anchors.right: parent.right
-                anchors.topMargin: -2
-                anchors.rightMargin: -2
-
-                readonly property var activeWindow: wsButton.focused ? root.activeWindowFor(wsButton.workspace) : null
-                readonly property string activeAppId: activeWindow && activeWindow.wayland ? activeWindow.wayland.appId : ""
-                readonly property string activeIconSource: activeAppId ? Quickshell.iconPath(activeAppId, true) : ""
-                readonly property bool showIcon: activeWindow !== null && activeIconSource !== "" && iconLoader.status === Image.Ready
-                readonly property string activeLetter: {
-                  var label = activeWindow ? (activeWindow.title || activeAppId) : ""
-                  return label ? label.charAt(0).toUpperCase() : "?"
-                }
-
-                Image {
-                  id: iconLoader
-                  visible: false
-                  source: countBadge.activeIconSource
-                  asynchronous: true
-                  smooth: true
-                  onStatusChanged: if (status === Image.Ready) badgeIcon.requestPaint()
-                }
-
-                Canvas {
-                  id: badgeIcon
-                  visible: countBadge.showIcon
-                  anchors.fill: parent
-
-                  onPaint: {
-                    var ctx = getContext("2d")
-                    ctx.reset()
-                    if (iconLoader.status !== Image.Ready) return
-                    ctx.save()
-                    ctx.beginPath()
-                    ctx.arc(width / 2, height / 2, width / 2, 0, Math.PI * 2)
-                    ctx.closePath()
-                    ctx.clip()
-                    ctx.drawImage(iconLoader, 0, 0, width, height)
-                    ctx.restore()
-                  }
-                }
-
-                Text {
-                  id: badgeText
-                  visible: !countBadge.showIcon
-                  anchors.centerIn: parent
-                  text: countBadge.activeWindow ? countBadge.activeLetter : String(wsButton.windowCount)
-                  color: root.contrastingTextColor(countBadge.color)
-                  font.family: root.bar.fontFamily
-                  font.pixelSize: Style.space(9)
-                  font.bold: true
                 }
               }
             }
