@@ -1,8 +1,18 @@
 #!/bin/bash
-# Wires SUPER+<number> to this plugin's window picker by appending a marked
-# block to ~/.config/hypr/bindings.lua. Run by hand -- Omarchy's plugin
-# installer deliberately never runs plugin code or install hooks on
-# add/update/enable, so this can't happen automatically. See README.md.
+# Wires SUPER+<number> to this plugin's window picker, and SUPER+SHIFT+<number>
+# (move window to workspace) to a plain move onto that same shared id, by
+# appending a marked block to ~/.config/hypr/bindings.lua. Run by hand --
+# Omarchy's plugin installer deliberately never runs plugin code or install
+# hooks on add/update/enable, so this can't happen automatically. See
+# README.md.
+#
+# The move-window rebind matters because Omarchy's stock SUPER+SHIFT+<number>
+# bind is monitor-relative (default/hypr/monitor-workspaces.lua: each monitor
+# owns its own 1-10 block), while this plugin treats 1-10 as one shared,
+# paired-across-monitors range (see focus-workspace.sh). Left on the stock
+# bind, SUPER+SHIFT+<n> on the second monitor sends the window to workspace
+# n+10 -- a workspace this plugin's bar never shows -- which looks like the
+# window landed on the wrong screen.
 #
 # The write is done through the resolved real file rather than the
 # pathname: the path is resolved once, must be a regular file, the new
@@ -41,6 +51,13 @@ tmp=$(mktemp -- "$real.tmp.XXXXXX")
   echo '  local key = "code:" .. tostring(workspace + 9)'
   echo '  hl.unbind("SUPER + " .. key)'
   echo '  o.bind("SUPER + " .. key, "Switch to workspace " .. workspace, workspace_picker .. " " .. tostring(workspace))'
+  echo ''
+  echo '  hl.unbind("SUPER + SHIFT + " .. key)'
+  echo '  hl.unbind("SUPER + SHIFT + ALT + " .. key)'
+  echo '  o.bind("SUPER + SHIFT + " .. key, "Move window to workspace " .. workspace,'
+  echo '    hl.dsp.window.move({ workspace = tostring(workspace), follow = true }))'
+  echo '  o.bind("SUPER + SHIFT + ALT + " .. key, "Move window silently to workspace " .. workspace,'
+  echo '    hl.dsp.window.move({ workspace = tostring(workspace), follow = false }))'
   echo 'end'
   echo "$end_marker"
 } > "$tmp"
@@ -48,5 +65,5 @@ chmod --reference="$real" -- "$tmp"
 mv -f -- "$tmp" "$real"
 tmp=""
 
-echo "Wired SUPER+<number> to the window picker in $real"
+echo "Wired SUPER+<number> (switch) and SUPER+SHIFT+<number> (move window) in $real"
 echo "(backup saved as $backup; Hyprland picks this up automatically on save)"

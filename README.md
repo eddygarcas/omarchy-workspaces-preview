@@ -47,6 +47,19 @@ This appends a marked, idempotent block to `~/.config/hypr/bindings.lua`
 (backing it up first) and Hyprland picks it up automatically on save. To
 revert it later: `scripts/uninstall-keybinding.sh`.
 
+The same block also rebinds `SUPER+SHIFT+<number>` (move window to
+workspace) and its silent (`+ALT`) variant. That one isn't optional in the
+way the picker is — skipping it leaves a real inconsistency: Omarchy's
+stock move-window bind is monitor-relative (each monitor owns its own 1-10
+block, see `default/hypr/monitor-workspaces.lua`), while this plugin treats
+1-10 as one shared range paired across both monitors (see
+`scripts/focus-workspace.sh`). On a two-monitor setup, pressing
+`SUPER+SHIFT+2` while focused on the second monitor would send the window
+to workspace `12` under the stock bind — a workspace this plugin's bar
+never shows — which looks exactly like the window landed on the wrong
+screen. The installed bind moves onto the shared id instead, matching the
+switch bind above.
+
 Prefer to do it by hand instead? Add this to `~/.config/hypr/bindings.lua`:
 
 ```lua
@@ -55,6 +68,13 @@ for workspace = 1, 10 do
   local key = "code:" .. tostring(workspace + 9)
   hl.unbind("SUPER + " .. key)
   o.bind("SUPER + " .. key, "Switch to workspace " .. workspace, workspace_picker .. " " .. tostring(workspace))
+
+  hl.unbind("SUPER + SHIFT + " .. key)
+  hl.unbind("SUPER + SHIFT + ALT + " .. key)
+  o.bind("SUPER + SHIFT + " .. key, "Move window to workspace " .. workspace,
+    hl.dsp.window.move({ workspace = tostring(workspace), follow = true }))
+  o.bind("SUPER + SHIFT + ALT + " .. key, "Move window silently to workspace " .. workspace,
+    hl.dsp.window.move({ workspace = tostring(workspace), follow = false }))
 end
 ```
 
