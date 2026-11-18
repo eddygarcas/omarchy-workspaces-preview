@@ -60,6 +60,15 @@ never shows — which looks exactly like the window landed on the wrong
 screen. The installed bind moves onto the shared id instead, matching the
 switch bind above.
 
+The block also switches off Omarchy's per-monitor workspace reconcile while
+exactly two monitors are connected. That reconcile runs on every Hyprland
+config reload (including the ones other plugins trigger by rewriting files
+under `~/.config/hypr/`), on Hyprland start and on monitor hotplug, and it
+moves any workspace with windows into the number block of the monitor it sits
+on. Left on, it turned the paired even workspaces on the second monitor into
+`12`, `14`, … and parked that monitor on `11`, so their windows vanished from
+the bar. With one monitor, or three or more, the stock reconcile still runs.
+
 Prefer to do it by hand instead? Add this to `~/.config/hypr/bindings.lua`:
 
 ```lua
@@ -75,6 +84,19 @@ for workspace = 1, 10 do
     hl.dsp.window.move({ workspace = tostring(workspace), follow = true }))
   o.bind("SUPER + SHIFT + ALT + " .. key, "Move window silently to workspace " .. workspace,
     hl.dsp.window.move({ workspace = tostring(workspace), follow = false }))
+end
+
+if o.workspaces and o.workspaces.reconcile then
+  local stock_reconcile = o.workspaces.stock_reconcile or o.workspaces.reconcile
+  o.workspaces.stock_reconcile = stock_reconcile
+  o.workspaces.reconcile = function(added, gone)
+    local count = 0
+    for _, monitor in ipairs(hl.get_monitors()) do
+      if not monitor.is_mirror and monitor.name ~= gone then count = count + 1 end
+    end
+    if count == 2 then return end
+    return stock_reconcile(added, gone)
+  end
 end
 ```
 

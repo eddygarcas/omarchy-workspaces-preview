@@ -59,6 +59,22 @@ tmp=$(mktemp -- "$real.tmp.XXXXXX")
   echo '  o.bind("SUPER + SHIFT + ALT + " .. key, "Move window silently to workspace " .. workspace,'
   echo '    hl.dsp.window.move({ workspace = tostring(workspace), follow = false }))'
   echo 'end'
+  echo ''
+  echo '-- Skip Omarchy'"'"'s per-monitor reconcile with exactly two monitors: it'
+  echo '-- renumbers paired workspaces into the second monitor'"'"'s 11-20 block on'
+  echo '-- every config reload. See the plugin README.'
+  echo 'if o.workspaces and o.workspaces.reconcile then'
+  echo '  local stock_reconcile = o.workspaces.stock_reconcile or o.workspaces.reconcile'
+  echo '  o.workspaces.stock_reconcile = stock_reconcile'
+  echo '  o.workspaces.reconcile = function(added, gone)'
+  echo '    local count = 0'
+  echo '    for _, monitor in ipairs(hl.get_monitors()) do'
+  echo '      if not monitor.is_mirror and monitor.name ~= gone then count = count + 1 end'
+  echo '    end'
+  echo '    if count == 2 then return end'
+  echo '    return stock_reconcile(added, gone)'
+  echo '  end'
+  echo 'end'
   echo "$end_marker"
 } > "$tmp"
 chmod --reference="$real" -- "$tmp"
