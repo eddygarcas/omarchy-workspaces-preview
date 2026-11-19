@@ -60,14 +60,26 @@ never shows — which looks exactly like the window landed on the wrong
 screen. The installed bind moves onto the shared id instead, matching the
 switch bind above.
 
-The block also switches off Omarchy's per-monitor workspace reconcile while
-exactly two monitors are connected. That reconcile runs on every Hyprland
-config reload (including the ones other plugins trigger by rewriting files
-under `~/.config/hypr/`), on Hyprland start and on monitor hotplug, and it
-moves any workspace with windows into the number block of the monitor it sits
-on. Left on, it turned the paired even workspaces on the second monitor into
-`12`, `14`, … and parked that monitor on `11`, so their windows vanished from
-the bar. With one monitor, or three or more, the stock reconcile still runs.
+The block also switches off Omarchy's per-monitor workspace reconcile for its
+*ambient* calls while exactly two monitors are connected -- the ones
+`config.reloaded` (including reloads other plugins trigger by rewriting files
+under `~/.config/hypr/`) and `hyprland.start` fire with no topology change.
+Left on, that reconcile moved any workspace with windows into the number
+block of the monitor it sits on, turning the paired even workspaces on the
+second monitor into `12`, `14`, … and parking that monitor on `11`, so their
+windows vanished from the bar.
+
+A real `monitor.added`/`monitor.removed` transition (the override only skips
+when both `added` and `gone` are nil) still runs the stock reconcile, because
+that's the call that merges a disconnecting monitor's workspaces onto the
+other one and reclaims them when it returns -- skipping those too leaves a
+monitor's workspaces permanently parked in the other's `11-20`+ block after
+any disconnect, suspend/resume included. An earlier version of this override
+skipped unconditionally whenever two monitors were connected, which is
+exactly backwards for `monitor.added`: that's fired *because* a monitor just
+returned, so unconditionally skipping it is what let the stuck-above-10 state
+happen in the first place. With one monitor, or three or more, the stock
+reconcile always runs.
 
 Prefer to do it by hand instead? Add this to `~/.config/hypr/bindings.lua`:
 
@@ -90,11 +102,13 @@ if o.workspaces and o.workspaces.reconcile then
   local stock_reconcile = o.workspaces.stock_reconcile or o.workspaces.reconcile
   o.workspaces.stock_reconcile = stock_reconcile
   o.workspaces.reconcile = function(added, gone)
-    local count = 0
-    for _, monitor in ipairs(hl.get_monitors()) do
-      if not monitor.is_mirror and monitor.name ~= gone then count = count + 1 end
+    if added == nil and gone == nil then
+      local count = 0
+      for _, monitor in ipairs(hl.get_monitors()) do
+        if not monitor.is_mirror then count = count + 1 end
+      end
+      if count == 2 then return end
     end
-    if count == 2 then return end
     return stock_reconcile(added, gone)
   end
 end
@@ -190,11 +204,12 @@ The `SUPER+<number>` integration requires running `scripts/install-keybinding.sh
 safely rewrite another config file's keybindings for you, so this step isn't
 automated by install/enable.
 
-The bar no longer hides a workspace above `10`: the installed reconcile
-override (see above) is meant to keep everything in the shared 1-10 range on
-a two-monitor setup, but it isn't the only path that can place a workspace
-into a monitor's own `11-20`+ block — a workspace that drifts there (e.g.
-across a suspend/resume cycle) still gets a pill instead of silently
+The bar no longer hides a workspace above `10` as a safety net: the
+reconcile override (see above, fixed in 1.5.5) is meant to keep everything in
+the shared 1-10 range on a two-monitor setup, but a workspace that somehow
+still drifts above it — a 1.5.3/1.5.4 install that hasn't been reinstalled
+with the fixed override yet, or some other path into Omarchy's per-monitor
+block that the override doesn't cover — gets a pill instead of silently
 vanishing, even though `SUPER+SHIFT+<number>` was written assuming 1-10.
 
 ## Suspend/resume
