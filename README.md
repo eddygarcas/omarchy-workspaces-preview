@@ -190,6 +190,22 @@ The `SUPER+<number>` integration requires running `scripts/install-keybinding.sh
 safely rewrite another config file's keybindings for you, so this step isn't
 automated by install/enable.
 
+The bar no longer hides a workspace above `10`: the installed reconcile
+override (see above) is meant to keep everything in the shared 1-10 range on
+a two-monitor setup, but it isn't the only path that can place a workspace
+into a monitor's own `11-20`+ block — a workspace that drifts there (e.g.
+across a suspend/resume cycle) still gets a pill instead of silently
+vanishing, even though `SUPER+SHIFT+<number>` was written assuming 1-10.
+
+## Suspend/resume
+
+Quickshell's cached workspace/monitor state can go stale across a suspend —
+events that happen while the machine is asleep are missed, since the IPC
+socket itself is asleep too. The widget watches logind's resume signal
+directly (`scripts/watch-resume.sh`) and forces a refresh on wake, with a
+follow-up refresh ~1.5s later in case Hyprland's own socket is still
+reconnecting at the first attempt.
+
 ## Permissions & dependencies
 
 - No external packages or network access required.
@@ -207,6 +223,9 @@ automated by install/enable.
   file (which must be a regular file), back that up, write the new
   content to a `mktemp`'d sibling and rename it into place -- never
   writing through a pathname that could be swapped for a symlink.
+- `scripts/watch-resume.sh` runs `dbus-monitor --system`, filtered to
+  logind's `PrepareForSleep` signal, to detect resume and trigger a refresh.
+  It touches no files and dispatches nothing itself.
 - The scratchpad pill's `scratchpadName` setting is validated against a
   narrow allowlist before it is placed in the `hyprctl dispatch` Lua
   expression; values outside it fall back to `special:scratchpad`.
@@ -224,6 +243,7 @@ automated by install/enable.
 | `scripts/switch-or-preview.sh`        | Optional `SUPER+<number>` keybinding helper           |
 | `scripts/install-keybinding.sh`       | Wires up the optional keybinding (see above)          |
 | `scripts/uninstall-keybinding.sh`     | Reverts `install-keybinding.sh`                       |
+| `scripts/watch-resume.sh`             | Reports logind resume events for the suspend/resume refresh |
 
 ## Remove
 

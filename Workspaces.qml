@@ -68,6 +68,60 @@ BarWidget {
     }
   }
 
+  // Events that happen while suspended (closed windows, moved workspaces,
+  // monitors dropping/returning) can be missed entirely, since the IPC
+  // socket itself is asleep. Nothing else re-syncs Quickshell's cached
+  // Hyprland state afterwards, so the bar can keep showing pre-suspend data
+  // -- wrong pairs, stale occupancy -- until some unrelated event happens to
+  // force a refresh. Watch logind's own resume signal and force one
+  // directly. Fired twice (immediately, then again once the socket has had
+  // a moment to settle) because the first refresh can itself race Hyprland
+  // still reconnecting right after wake.
+  function logResumeEvent(event) {
+    console.log("eduard.workspaces " + new Date().toISOString() + " screen=" + root.screenName + " " + event)
+  }
+
+  // Same HOME-relative path style as linkScript above. Qt.resolvedUrl()
+  // silently produces a path Process never actually starts from, since
+  // plugins load from outside the config folder (see the
+  // "quickshell.qmlscanner: Module path ... is outside of the config
+  // folder" warning elsewhere in the log).
+  readonly property string resumeWatcherScript: Quickshell.env("HOME") + "/.config/omarchy/plugins/eduard.workspaces/scripts/watch-resume.sh"
+
+  Process {
+    id: resumeWatcher
+    command: ["bash", root.resumeWatcherScript]
+    stdout: SplitParser {
+      onRead: function(line) {
+        root.logResumeEvent("resume-detected monitors=" + Hyprland.monitors.values.length + " workspaces=" + Hyprland.workspaces.values.length)
+        Hyprland.refreshMonitors()
+        Hyprland.refreshWorkspaces()
+        Hyprland.refreshToplevels()
+        root.revision++
+        resumeResyncTimer.restart()
+      }
+    }
+    onExited: function(exitCode, exitStatus) {
+      root.logResumeEvent("resume-watcher-exited code=" + exitCode + " status=" + exitStatus)
+    }
+    Component.onCompleted: {
+      root.logResumeEvent("resume-watcher-starting script=" + root.resumeWatcherScript)
+      running = true
+    }
+  }
+
+  Timer {
+    id: resumeResyncTimer
+    interval: 1500
+    onTriggered: {
+      Hyprland.refreshMonitors()
+      Hyprland.refreshWorkspaces()
+      Hyprland.refreshToplevels()
+      root.revision++
+      root.logResumeEvent("resume-resync-complete monitors=" + Hyprland.monitors.values.length + " workspaces=" + Hyprland.workspaces.values.length)
+    }
+  }
+
   // --- scratchpad -----------------------------------------------------------
   // One bar surface exists per monitor, so the widget reads its own screen
   // off the window it was instantiated into to tell whether the stash is
@@ -124,6 +178,12 @@ BarWidget {
   // fresh workspace never leaves the bar with nothing to point at, and a
   // linked pair's empty partner still renders while it's shown). With
   // `showEmpty` on, 1-5 stay pinned as well.
+  //
+  // No upper id cutoff: Omarchy's stock per-monitor reconcile (see the
+  // reconcile override installed above) gives a second monitor its own
+  // 11-20+ block, and that override isn't guaranteed to catch every path
+  // that can place a workspace there. A workspace outside 1-10 is exactly
+  // as real as any other -- capping here just silently hid its pill.
   function workspaceIds() {
     var _ = root.revision
     var ids = root.showEmpty ? [1, 2, 3, 4, 5] : []
@@ -132,7 +192,7 @@ BarWidget {
     for (var i = 0; i < values.length; i++) {
       var ws = values[i]
       var id = ws.id
-      if (id <= 0 || id > 10 || ids.indexOf(id) !== -1) continue
+      if (id <= 0 || ids.indexOf(id) !== -1) continue
       if (root.showEmpty || root.hasWindows(ws) || root.isWorkspaceShown(id)) ids.push(id)
     }
 
